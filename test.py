@@ -98,6 +98,7 @@ center_lon = df["lon"].mean()
 m = folium.Map(
     location=[center_lat,center_lon],
     zoom_start=zoom_level,
+    max_zoom=25,
     tiles=None,
     control_scale=True
 )
@@ -112,14 +113,16 @@ folium.TileLayer(
     attr="Google",
     name="Google Hybrid (Satelit)",
     overlay=False,
-    control=True
+    control=True,
+    max_zoom=25
 ).add_to(m)
 
 folium.TileLayer(
     tiles="OpenStreetMap",
     name="openstreetmap",
     overlay=False,
-    control=True
+    control=True,
+    max_zoom=25
 ).add_to(m)
 
 folium.TileLayer(
@@ -127,7 +130,8 @@ folium.TileLayer(
     attr="© OpenStreetMap contributors",
     name="Peta Jalan (OSM)",
     overlay=False,
-    control=True
+    control=True,
+    max_zoom=25
 ).add_to(m)
 
 
@@ -272,6 +276,7 @@ st.sidebar.subheader("Eksport Data QGIS")
 
 features=[]
 
+
 # POINT
 
 for i,row in df.iterrows():
@@ -330,6 +335,7 @@ features.append({
 "Area_m2":round(area_m2,3),
 "Area_hectare":round(area_hect,4),
 "Perimeter_m":round(perimeter,3)
+
 }
 
 })
