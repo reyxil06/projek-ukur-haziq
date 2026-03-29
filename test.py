@@ -10,9 +10,29 @@ from pyproj import Transformer
 st.set_page_config(layout="wide")
 
 # =============================
-# LOGIN SYSTEM
+# STYLE
 # =============================
+st.markdown("""
+<style>
+.block-container {
+    padding-top: 1rem;
+    padding-bottom: 0rem;
+    padding-left: 0rem;
+    padding-right: 0rem;
+}
+iframe {
+    height: 100vh !important;
+}
+section[data-testid="stSidebar"] {
+    background-color: #1e1e1e;
+    color: white;
+}
+</style>
+""", unsafe_allow_html=True)
 
+# =============================
+# LOGIN
+# =============================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
@@ -24,10 +44,7 @@ if not st.session_state.logged_in:
     password = st.text_input("Masukkan Kata Laluan", type="password")
 
     if st.button("Log Masuk"):
-
-        senarai_id = ["wan","muhammad","haziq"]
-
-        if user_id in senarai_id and password == "wanziq67":
+        if user_id in ["wan","muhammad","haziq"] and password == "wanziq67":
             st.session_state.logged_in = True
             st.rerun()
         else:
@@ -35,25 +52,29 @@ if not st.session_state.logged_in:
 
     st.stop()
 
-
 # =============================
 # HEADER
 # =============================
-
 st.title("SISTEM SURVEY LOT")
 st.caption("Politeknik Ungku Omar | Jabatan Kejuruteraan Awam")
 
-
 # =============================
-# SIDEBAR CONTROL
+# SIDEBAR
 # =============================
-
 st.sidebar.header("Kawalan Paparan")
 
-marker_size = st.sidebar.slider("Saiz Marker Stesen",5,25,12)
-bearing_size = st.sidebar.slider("Saiz Bearing/Jarak",8,20,12)
-zoom_level = st.sidebar.slider("Tahap Zoom",10,22,19)
-poly_color = st.sidebar.color_picker("Warna Poligon","#ffff00")
+# 🔥 KAWALAN LAPISAN
+st.sidebar.subheader("Kawalan Lapisan")
+show_satellite = st.sidebar.checkbox("Google Satellite", True)
+show_label = st.sidebar.checkbox("Label Stesen", True)
+show_bearing = st.sidebar.checkbox("Bearing & Jarak", True)
+
+st.sidebar.markdown("---")
+
+marker_size = st.sidebar.slider("Saiz Marker",5,25,12)
+bearing_size = st.sidebar.slider("Saiz Label",8,20,12)
+zoom_level = st.sidebar.slider("Zoom",10,22,19)
+poly_color = st.sidebar.color_picker("Warna","#ffff00")
 
 epsg = st.sidebar.text_input("Kod EPSG","4390")
 
@@ -61,168 +82,125 @@ if st.sidebar.button("Log Keluar"):
     st.session_state.logged_in=False
     st.rerun()
 
-
 # =============================
-# FILE UPLOAD
+# FILE
 # =============================
-
-uploaded = st.file_uploader("📂 Muat naik fail CSV (STN, E, N)",type="csv")
+uploaded = st.file_uploader("📂 Upload CSV (STN, E, N)",type="csv")
 
 if uploaded is None:
     st.stop()
 
 df = pd.read_csv(uploaded)
-
 df.columns = df.columns.str.strip().str.upper()
 
-
 # =============================
-# EPSG CONVERSION
+# CONVERT
 # =============================
-
 transformer = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
-
 lon, lat = transformer.transform(df["E"].values, df["N"].values)
 
 df["lon"] = lon
 df["lat"] = lat
 
-
 # =============================
-# MAP CENTER
+# MAP
 # =============================
-
 center_lat = df["lat"].mean()
 center_lon = df["lon"].mean()
 
 m = folium.Map(
     location=[center_lat,center_lon],
     zoom_start=zoom_level,
-    max_zoom=25,
     tiles=None,
     control_scale=True
 )
 
+# BASEMAP CONTROL
+if show_satellite:
+    folium.TileLayer(
+        tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+        attr="Google",
+        name="Google Hybrid",
+        max_zoom=25
+    ).add_to(m)
+else:
+    folium.TileLayer("OpenStreetMap").add_to(m)
 
 # =============================
-# BASEMAP
+# FUNCTION
 # =============================
-
-folium.TileLayer(
-    tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-    attr="Google",
-    name="Google Hybrid (Satelit)",
-    overlay=False,
-    control=True,
-    max_zoom=25
-).add_to(m)
-
-folium.TileLayer(
-    tiles="OpenStreetMap",
-    name="openstreetmap",
-    overlay=False,
-    control=True,
-    max_zoom=25
-).add_to(m)
-
-folium.TileLayer(
-    tiles="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attr="© OpenStreetMap contributors",
-    name="Peta Jalan (OSM)",
-    overlay=False,
-    control=True,
-    max_zoom=25
-).add_to(m)
-
-
-# =============================
-# SURVEY LAYER
-# =============================
-
-survey_layer = folium.FeatureGroup(name="Data Survey", show=True)
-
-
-# =============================
-# BEARING FUNCTION
-# =============================
-
 def bearing(lat1,lon1,lat2,lon2):
-
     lat1 = math.radians(lat1)
     lat2 = math.radians(lat2)
-
     diff = math.radians(lon2-lon1)
 
     x = math.sin(diff)*math.cos(lat2)
     y = math.cos(lat1)*math.sin(lat2)-math.sin(lat1)*math.cos(lat2)*math.cos(diff)
 
-    initial = math.degrees(math.atan2(x,y))
+    return (math.degrees(math.atan2(x,y))+360)%360
 
-    return (initial+360)%360
-
-
-# =============================
-# DISTANCE FUNCTION
-# =============================
+def to_dms(angle):
+    d = int(angle)
+    m = int((angle - d) * 60)
+    s = int((angle - d - m/60) * 3600)
+    return f"{d}°{m:02d}'{s:02d}\""
 
 def distance(p1,p2):
-
     return math.sqrt(
         (p1[0]-p2[0])**2 +
         (p1[1]-p2[1])**2
     )*111139
 
-
 # =============================
-# POINT + STN
+# SURVEY
 # =============================
+survey_layer = folium.FeatureGroup(name="Survey")
 
 coords=[]
 
 for i,row in df.iterrows():
 
     point=[row["lat"],row["lon"]]
-
     coords.append(point)
 
-    folium.CircleMarker(
-        location=point,
-        radius=marker_size/2,
-        color="red",
-        fill=True
-    ).add_to(survey_layer)
-
+    # POINT
     folium.Marker(
-        point,
-        icon=folium.DivIcon(
-            html=f'<div style="color:white;font-weight:bold">{row["STN"]}</div>'
-        )
+        location=point,
+        icon=folium.Icon(color="red", icon="map-marker", prefix="fa")
     ).add_to(survey_layer)
 
-
-# =============================
-# CLOSE POLYGON
-# =============================
+    # LABEL
+    if show_label:
+        folium.Marker(
+            point,
+            icon=folium.DivIcon(
+                html=f"""
+                <div style="
+                    color:white;
+                    font-weight:bold;
+                    font-size:13px;
+                    text-shadow:1px 1px 2px black;
+                ">
+                {row["STN"]}
+                </div>
+                """
+            )
+        ).add_to(survey_layer)
 
 coords_closed = coords + [coords[0]]
 
-
-# =============================
 # POLYGON
-# =============================
-
 folium.Polygon(
     coords_closed,
     color=poly_color,
+    weight=4,
     fill=True,
-    fill_opacity=0.4
+    fill_opacity=0.2
 ).add_to(survey_layer)
 
-
 # =============================
-# BEARING + DISTANCE
+# BEARING
 # =============================
-
 perimeter = 0
 
 for i in range(len(coords)):
@@ -230,135 +208,59 @@ for i in range(len(coords)):
     p1 = coords[i]
     p2 = coords[(i+1)%len(coords)]
 
-    mid = [
-        (p1[0]+p2[0])/2,
-        (p1[1]+p2[1])/2
-    ]
+    mid = [(p1[0]+p2[0])/2,(p1[1]+p2[1])/2]
 
     brg = bearing(p1[0],p1[1],p2[0],p2[1])
     dist = distance(p1,p2)
 
     perimeter += dist
 
-    label=f"{brg:.2f}°<br>{dist:.2f} m"
+    dms = to_dms(brg)
+    label = f"{dms}<br>{dist:.2f}m"
 
-    folium.Marker(
-        mid,
-        icon=folium.DivIcon(
-            html=f'<div style="color:yellow;font-size:{bearing_size}px">{label}</div>'
-        )
-    ).add_to(survey_layer)
-
+    if show_bearing:
+        folium.Marker(
+            mid,
+            icon=folium.DivIcon(
+                html=f"""
+                <div style="
+                    color:#5a2d0c;
+                    font-size:{bearing_size}px;
+                    font-weight:bold;
+                    text-align:center;
+                ">
+                {label}
+                </div>
+                """
+            )
+        ).add_to(survey_layer)
 
 survey_layer.add_to(m)
 
-
 # =============================
-# AREA CALCULATION
+# AREA
 # =============================
-
 poly = Polygon([(p[1],p[0]) for p in coords_closed])
-
 area_m2 = poly.area * 12364000000
 area_hect = area_m2 / 10000
 
-col1,col2 = st.columns(2)
+# =============================
+# SIDEBAR REPORT
+# =============================
+st.sidebar.subheader("📋 Laporan Lot")
 
-col1.metric("Area (m²)",round(area_m2,2))
-col2.metric("Area (Hektar)",round(area_hect,4))
-
+st.sidebar.text(f"""
+NO LOT : LOT_SAMPLE
+STESEN : {len(coords)}
+PEMILIK : Wan Muhammad Haziq
+LUAS : {area_m2:.2f} m²
+EKAR : {area_hect*2.47105:.4f} ac
+PERIMETER : {perimeter:.2f} m
+""")
 
 # =============================
-# EXPORT QGIS DATA
+# DISPLAY
 # =============================
+folium.LayerControl().add_to(m)
 
-st.sidebar.subheader("Eksport Data QGIS")
-
-features=[]
-
-
-# POINT
-
-for i,row in df.iterrows():
-
-    features.append({
-        "type":"Feature",
-        "geometry":{
-            "type":"Point",
-            "coordinates":[row["lon"],row["lat"]]
-        },
-        "properties":{
-            "STN":row["STN"]
-        }
-    })
-
-
-# LINE
-
-for i in range(len(coords)):
-
-    p1 = coords[i]
-    p2 = coords[(i+1)%len(coords)]
-
-    brg = bearing(p1[0],p1[1],p2[0],p2[1])
-    dist = distance(p1,p2)
-
-    features.append({
-        "type":"Feature",
-        "geometry":{
-            "type":"LineString",
-            "coordinates":[
-                [p1[1],p1[0]],
-                [p2[1],p2[0]]
-            ]
-        },
-        "properties":{
-            "line":f"{i+1}-{(i+2) if i+1<len(coords) else 1}",
-            "bearing":round(brg,2),
-            "distance_m":round(dist,3)
-        }
-    })
-
-
-# POLYGON
-
-features.append({
-
-"type":"Feature",
-
-"geometry":{
-"type":"Polygon",
-"coordinates":[[[p[1],p[0]] for p in coords_closed]]
-},
-
-"properties":{
-"Area_m2":round(area_m2,3),
-"Area_hectare":round(area_hect,4),
-"Perimeter_m":round(perimeter,3)
-
-}
-
-})
-
-
-geojson = {
-"type":"FeatureCollection",
-"features":features
-}
-
-geojson_str=json.dumps(geojson)
-
-st.sidebar.download_button(
-"🚀 Export QGIS Lengkap (.geojson)",
-geojson_str,
-file_name="survey_lot_full.geojson"
-)
-
-
-# =============================
-# DISPLAY MAP
-# =============================
-
-folium.LayerControl(collapsed=False).add_to(m)
-
-st_folium(m,width=900,height=650)
+st_folium(m, width="100%", height=900)
